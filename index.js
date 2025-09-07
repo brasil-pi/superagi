@@ -56,7 +56,7 @@ Do not include any text outside of the JSON object if you choose this option.`
     const messages = [systemPrompt, ...history, { role: 'user', content: message }];
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       messages: messages,
       temperature: 0.9,
     });
