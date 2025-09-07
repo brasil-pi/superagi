@@ -24,6 +24,11 @@ This is a simple Node.js application that provides a chat interface with the Ope
    ```
    Replace `your_openai_api_key` with your actual key.
 
+3. Add your Admin API key for secure endpoints:
+   ```
+   ADMIN_API_KEY=your_secret_admin_key
+   ```
+
 ## Running the Server
 
 To start the server, run the following command in your terminal:
@@ -52,4 +57,19 @@ curl -X POST http://localhost:3000/chat \
 {
   "response": "I am an AI assistant, so I don't have feelings, but I'm here to help you!"
 }
+```
+
+---
+
+## Advanced Usage
+
+### View Source Code
+
+You can view the source code of the application by sending a GET request to the `/source-code` endpoint. This requires a valid `ADMIN_API_KEY` to be sent in the `X-API-Key` header.
+
+#### Example using cURL
+
+```bash
+curl http://localhost:3000/source-code?file=index.js \
+     -H "X-API-Key: your_secret_admin_key"
 ```
