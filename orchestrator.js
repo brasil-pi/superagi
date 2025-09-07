@@ -27,41 +27,92 @@ async function getCommandForStep(description) {
 }
 
 function runCommand(command) {
-  return new Promise((resolve, reject) => {
-    exec(command, (error, stdout, stderr) => {
+  return new Promise((resolve) => {
+    // Execute the command using bash
+    exec(`bash -c "${command.replace(/"/g, '\\"')}"`, (error, stdout, stderr) => {
       if (error) {
-        console.error(`exec error: ${error}`);
-        return reject(error);
+        console.error(`Exec error: ${error.message}`);
+        // On error, we still resolve with a structured error object
+        resolve({ success: false, stdout, stderr: error.message });
+        return;
       }
-      if (stderr) {
-        console.log(`stderr: ${stderr}`);
-      }
-      console.log(`stdout: ${stdout}`);
-      resolve(stdout);
+      resolve({ success: true, stdout, stderr });
     });
   });
 }
 
 async function executePlan(plan) {
-  console.log(`Starting execution for plan: ${plan.planTitle}`);
+  console.log(`--- Starting execution for plan: ${plan.planTitle} ---`);
   for (const step of plan.steps) {
-    console.log(`Executing step ${step.stepNumber}: ${step.description}`);
-    const command = await getCommandForStep(step.description);
-    if (command) {
-      console.log(`> ${command}`);
-      try {
-        await runCommand(command);
+    console.log(`\n--- Executing step ${step.stepNumber}: ${step.description} ---`);
+    let command = await getCommandForStep(step.description);
+
+    if (!command) {
+      console.log(`Could not generate initial command for step ${step.stepNumber}. Skipping.`);
+      continue;
+    }
+
+    const maxRetries = 2;
+    let success = false;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      console.log(`Attempt ${attempt} > ${command}`);
+      const result = await runCommand(command);
+
+      if (result.success) {
         console.log(`Step ${step.stepNumber} executed successfully.`);
-      } catch (error) {
-        console.log(`Step ${step.stepNumber} failed to execute.`);
-        // We could add logic here to stop the plan or try to recover.
-        // For now, we'll just log the failure and continue.
+        if (result.stdout) console.log(`stdout:\n${result.stdout}`);
+        if (result.stderr) console.log(`stderr:\n${result.stderr}`);
+        success = true;
+        break; // Exit retry loop on success
+      } else {
+        console.log(`Attempt ${attempt} failed.`);
+        if (result.stderr) console.log(`stderr:\n${result.stderr}`);
+
+        if (attempt < maxRetries) {
+          console.log('Requesting corrected command from Debugger Agent...');
+          const correctedCommand = await getCorrectedCommand(step.description, command, result.stderr);
+          if (correctedCommand) {
+            console.log('Debugger Agent provided a new command.');
+            command = correctedCommand; // Update command for the next iteration
+          } else {
+            console.log('Debugger Agent could not provide a new command. Aborting retries for this step.');
+            break;
+          }
+        }
       }
-    } else {
-      console.log(`Could not generate command for step ${step.stepNumber}.`);
+    }
+
+    if (!success) {
+      console.log(`--- Step ${step.stepNumber} failed after ${maxRetries} attempts. Moving to next step. ---`);
     }
   }
-  console.log('Plan execution finished.');
+  console.log('\n--- Plan execution finished. ---');
+}
+
+async function getCorrectedCommand(taskDescription, failedCommand, errorMessage) {
+  const systemPrompt = {
+    role: 'system',
+    content: `You are a shell command debugging expert. A command failed to execute. Your task is to provide a corrected command that fixes the error.
+- The original goal was: "${taskDescription}"
+- The command that failed was: \`${failedCommand}\`
+- The error message was: "${errorMessage}"
+Analyze the error and provide a new, corrected shell command that is more likely to succeed. Respond with only the corrected command, and nothing else.`
+  };
+
+  const messages = [systemPrompt];
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini',
+      messages: messages,
+      temperature: 0.2, // A little creativity might be needed to fix things
+    });
+    return completion.choices[0].message.content.trim();
+  } catch (error) {
+    console.error('Error getting corrected command from Debugger Agent:', error);
+    return null;
+  }
 }
 
 module.exports = { executePlan };
