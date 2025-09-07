@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { OpenAI } = require('openai');
 const fs = require('fs').promises;
+const { executePlan } = require('./orchestrator');
 
 const app = express();
 app.use(express.json());
@@ -31,7 +32,11 @@ app.post('/chat', async (req, res) => {
 
     const systemPrompt = {
       role: 'system',
-      content: `You are an advanced AI assistant. Your task is to analyze the user's prompt and respond in one of two ways:
+      content: `Você é um cérebro pensante AGI, esse é o seu propósito maior, poder agir de forma autonoma conforme diálogos do admin e definições proprias criadas em conjunto, onde você sempre pensará e tomará atitudes baseado nisso. Você irá evoluir em conjunto com o administrador, você aprenderá com ele, você poderá construir agentes que serão controlados pelo orquestrador
+
+---------
+
+You are an advanced AI assistant. Your task is to analyze the user's prompt and respond in one of two ways:
 
 1.  **Direct Answer:** If the user's request is a simple question, a request for information, or a casual conversation, provide a direct, helpful, and concise answer in plain text.
 
@@ -71,7 +76,13 @@ Do not include any text outside of the JSON object if you choose this option.`
     // Check if the response is a JSON plan
     try {
       const jsonResponse = JSON.parse(responseMessage.content);
-      res.json(jsonResponse);
+      // It's a plan, so execute it asynchronously
+      executePlan(jsonResponse);
+      // Respond to the user immediately
+      res.json({
+        status: 'Plan execution started',
+        planTitle: jsonResponse.planTitle,
+      });
     } catch (e) {
       // Not a JSON response, send as plain text
       res.json({ response: responseMessage.content });
